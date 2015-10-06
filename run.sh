@@ -98,9 +98,7 @@ fi
 if [ $step -le 2 ]; then
     echo "Start conversion to PFile."
 
-#    paste -d " " data/train/train-images.txt data/train/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train/train.data || exit 1
-
-    paste -d " " data/train/train-images.txt data/train/train-labels.txt | shuf > data/tmp.data
+    paste -d " " data/train/train-images.txt data/train/train-labels.txt | shuf --random-source=data/train/train-images.txt > data/tmp.data
     mkdir -p data/train_cv10 data/train_tr90
     head -n 1000 data/tmp.data | awk '{print NR-1 " 0 " $0}' > data/train_cv10/train_cv10.data
     tail -n +1000 data/tmp.data | awk '{print NR-1 " 0 " $0}' > data/train_tr90/train_tr90.data
@@ -117,12 +115,12 @@ if [ $step -le 3 ]; then
     echo "Start training."
     mkdir -p dnn
 
-    export PYTHONPATH=:$(pwd)/tools/pdnn/ ; export THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 ; 
-    python tools/pdnn/cmds/run_DNN.py --train-data data/train_tr90/train_tr90.pfile,partition=10m,random=true,stream=false \
-	--valid-data data/train_cv10/train_cv10.pfile,partition=10m,random=true,stream=false \
-	--nnet-spec 784:300:10 --activation maxout:3 --lrate D:0.0008:0.5:0.01,0.01:8 \
+    export PYTHONPATH=:$(pwd)/tools/pdnn/ ; export THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 ;
+    python tools/pdnn/cmds/run_DNN.py --train-data data/train_tr90/train_tr90.pfile,partition=10m,random=true,stream=true \
+	--valid-data data/train_cv10/train_cv10.pfile,partition=10m,random=true,stream=true \
+	--nnet-spec 784:500:500:10 --activation maxout:2 --lrate D:0.0008:0.5:0.01,0.01:8 \
 	--wdir dnn/ --kaldi-output-file dnn/nnet
-
+    
     echo "Finish training."
 fi
 
@@ -144,7 +142,38 @@ if [ $step -le 5 ]; then
 
     tools/kaldi-maxout/src/nnetbin/nnet-forward dnn/nnet ark,t:data/test/test-images.feats ark:- \
 	| tools/kaldi-maxout/src/featbin/append-feats ark:- ark,t:data/test/test-labels.feats ark,t:- \
-	| python calc_score.py || exit 1
+	| python calc_score.py 10 || exit 1
 
 fi
 
+# (6) Training convlutional neural network
+if [ $step -le 6 ] ; then
+    echo "Start traing CNN."
+
+    mkdir -p cnn
+    export PYTHONPATH=:$(pwd)/tools/pdnn/ ; export THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 ;
+    python tools/pdnn/cmds/run_CNN.py --train-data data/train_tr90/train_tr90.pfile,partition=10m,random=true,stream=true \
+	--valid-data data/train_cv10/train_cv10.pfile,partition=10m,random=true,stream=true \
+        --conv-nnet-spec "1x28x28:256,9x9,p2x2,f" \
+        --nnet-spec "300:10" \
+        --lrate "D:0.08:0.5:0.2,0.2:4" --momentum 0.9 \
+        --wdir cnn/ --param-output-file cnn/nnet.param \
+        --cfg-output-file cnn/nnet.cfg --kaldi-output-file cnn/cnn.nnet || exit 1;
+
+    echo "Finish training CNN"
+
+fi
+
+# (7) forward CNN to calc. posterior
+if [ $step -le 7 ]; then
+    echo "Forward CNN to calc. posterior."
+
+    tools/kaldi-maxout/src/featbin/copy-feats ark,t:data/test/test-images.feats ark,scp:data/test/test-images.ark,data/test/test-images.scp
+    export PYTHONPATH=:$(pwd)/tools/pdnn/ ; export THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 ;
+    python tools/pdnn/cmds2/run_CnnFeat.py --in-scp-file data/test/test-images.scp --out-ark-file data/test/test-images.conv.forward  --cnn-param-file cnn/nnet.param --cnn-cfg-file cnn/nnet.cfg
+
+    tools/kaldi-maxout/src/nnetbin/nnet-forward cnn/cnn.nnet ark:data/test/test-images.conv.forward ark:- \
+        | tools/kaldi-maxout/src/featbin/append-feats ark:- ark,t:data/test/test-labels.feats ark,t:- \
+        | python calc_score.py 10 || exit 1
+    
+fi

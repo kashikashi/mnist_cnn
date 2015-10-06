@@ -2,16 +2,25 @@
 
 data_dir=./mnist
 export PATH=$PATH:/usr/local/cuda/bin
-step=0
+step=1
 
 # (0) Get pdnn scripts
 if [ $step -le 0 ];then
+    echo "Start setup."
 
     if [ ! -d tools ]; then
 	mkdir -p tools
 	cd tools
 	
 	svn co https://github.com/yajiemiao/pdnn/trunk pdnn || exit 1
+
+	wget ftp://ftp.icsi.berkeley.edu/pub/real/davidj/quicknet.tar.gz || exit 1
+	tar -xvzf quicknet.tar.gz
+	cd quicknet-v3_33/
+	./configure --prefix=`pwd`  || exit 1
+	make install  || exit 1
+	cd ..
+
 	
 	wget http://www.icsi.berkeley.edu/ftp/pub/real/davidj/pfile_utils-v0_51.tar.gz  || exit 1
 	tar -xvzf pfile_utils-v0_51.tar.gz  || exit 1
@@ -21,32 +30,37 @@ if [ $step -le 0 ];then
 	make install || exit 1
 	cd ../../
     fi
-    
+    echo "Finish setup"  
 fi
 
 # (1) data prep
 if [ $step -le 1 ]; then
-    mkdir -p data
+    echo "Start data prep."
+    mkdir -p data/train
+    mkdir -p data/test
 
-    od -An -v -tu1 -j16 -w784 $data_dir/train-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/train/train-images.txt
-    od -An -v -tu1 -j8 -w1 $data_dir/train-labels-idx1-ubyte | tr -d ' ' > data/train/train-labels.txt
+    od -An -v -tu1 -j16 -w784 $data_dir/train-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/train/train-images.txt || exit 1
+    od -An -v -tu1 -j8 -w1 $data_dir/train-labels-idx1-ubyte | tr -d ' ' > data/train/train-labels.txt || exit 1
     
-    od -An -v -tu1 -j16 -w784 $data_dir/t10k-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/test/test-images.txt
-    od -An -v -tu1 -j8 -w1 $data_dir/t10k-labels-idx1-ubyte | tr -d ' ' > data/test/test-labels.txt
+    od -An -v -tu1 -j16 -w784 $data_dir/t10k-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/test/test-images.txt || exit 1
+    od -An -v -tu1 -j8 -w1 $data_dir/t10k-labels-idx1-ubyte | tr -d ' ' > data/test/test-labels.txt || exit 1
+    echo "Finish data prep."
 fi
 
 # (2) make PFile format
 if [ $step -le 2 ]; then
+    echo "Start conversion to PFile."
 
 #    paste -d " " data/train-images.txt data/train-labels.txt | awk '{print "0 " NR-1 " " $0}'  > data/train.data
 #    paste -d " " data/test-images.txt data/test-labels.txt | awk '{print "0 " NR-1 " " $0}'  > data/test.data
 
-    paste -d " " data/train/train-images.txt data/train/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train/train.data
-    paste -d " " data/test/test-images.txt data/test/test-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/test/test.data
+    paste -d " " data/train/train-images.txt data/train/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train/train.data || exit 1
+    paste -d " " data/test/test-images.txt data/test/test-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/test/test.data || exit 1
 
-    tools/pfile_utils-v0_51/bin/pfile_create -i data/train/train.data -o data/train/train.pfile -f 784 -l 1
-    tools/pfile_utils-v0_51/bin/pfile_create -i data/test/test.data -o data/test/test.pfile -f 784 -l 1
+    tools/pfile_utils-v0_51/bin/pfile_create -i data/train/train.data -o data/train/train.pfile -f 784 -l 1 || exit 1
+    tools/pfile_utils-v0_51/bin/pfile_create -i data/test/test.data -o data/test/test.pfile -f 784 -l 1 || exit 1
 
+    echo "Finish conversion to PFile."
 fi
 
 exit

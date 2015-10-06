@@ -4,29 +4,35 @@ data_dir=./mnist
 export PATH=$PATH:/usr/local/cuda/bin
 step=0
 
-# Get pdnn scripts
+# (0) Get pdnn scripts
 if [ $step -le 0 ];then
 
-    svn co https://github.com/yajiemiao/pdnn/trunk pdnn
-
-#    cp dgm_m2/cmds/run_DGM.py pdnn/cmds/
-#    cp dgm_m2/layers/{latent.py,gmm.py,joint.py} pdnn/layers/
-#    cp dgm_m2/utils/dgm_config.py pdnn/utils/
-#    cp dgm_m2/models/dgm.py pdnn/models/
-
+    if [ ! -d tools ]; then
+	mkdir -p tools
+	cd tools
+	
+	svn co https://github.com/yajiemiao/pdnn/trunk pdnn || exit 1
+	
+	wget http://www.icsi.berkeley.edu/ftp/pub/real/davidj/pfile_utils-v0_51.tar.gz  || exit 1
+	tar -xvzf pfile_utils-v0_51.tar.gz  || exit 1
+	cd pfile_utils-v0_51 
+	./configure --prefix=`pwd` --with-quicknet=`pwd`/../quicknet-v3_33/lib || exit 1
+	make -j 4 || exit 1
+	make install || exit 1
+	cd ../../
+    fi
+    
 fi
-
-exit
 
 # (1) data prep
 if [ $step -le 1 ]; then
     mkdir -p data
 
-    od -An -v -tu1 -j16 -w784 $data_dir/train-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/train-images.txt
-    od -An -v -tu1 -j8 -w1 $data_dir/train-labels-idx1-ubyte | tr -d ' ' > data/train-labels.txt
+    od -An -v -tu1 -j16 -w784 $data_dir/train-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/train/train-images.txt
+    od -An -v -tu1 -j8 -w1 $data_dir/train-labels-idx1-ubyte | tr -d ' ' > data/train/train-labels.txt
     
-    od -An -v -tu1 -j16 -w784 $data_dir/t10k-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/test-images.txt
-    od -An -v -tu1 -j8 -w1 $data_dir/t10k-labels-idx1-ubyte | tr -d ' ' > data/test-labels.txt
+    od -An -v -tu1 -j16 -w784 $data_dir/t10k-images-idx3-ubyte | sed 's/^ *//' | tr -s ' ' > data/test/test-images.txt
+    od -An -v -tu1 -j8 -w1 $data_dir/t10k-labels-idx1-ubyte | tr -d ' ' > data/test/test-labels.txt
 fi
 
 # (2) make PFile format
@@ -35,14 +41,15 @@ if [ $step -le 2 ]; then
 #    paste -d " " data/train-images.txt data/train-labels.txt | awk '{print "0 " NR-1 " " $0}'  > data/train.data
 #    paste -d " " data/test-images.txt data/test-labels.txt | awk '{print "0 " NR-1 " " $0}'  > data/test.data
 
-    paste -d " " data/train-images.txt data/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train.data
-    paste -d " " data/test-images.txt data/test-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/test.data
+    paste -d " " data/train/train-images.txt data/train/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train/train.data
+    paste -d " " data/test/test-images.txt data/test/test-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/test/test.data
 
-    /work/kashiwagi/2015/share/DGMM/timit_recog/../kaldi-extend/tools/pfile_utils-v0_51/bin/pfile_create -i data/train.data -o data/train.pfile -f 784 -l 1
-    /work/kashiwagi/2015/share/DGMM/timit_recog/../kaldi-extend/tools/pfile_utils-v0_51/bin/pfile_create -i data/test.data -o data/test.pfile -f 784 -l 1
+    tools/pfile_utils-v0_51/bin/pfile_create -i data/train/train.data -o data/train/train.pfile -f 784 -l 1
+    tools/pfile_utils-v0_51/bin/pfile_create -i data/test/test.data -o data/test/test.pfile -f 784 -l 1
 
 fi
 
+exit
 
 # (3) train deep generative model
 if [ $step -le 3 ]; then

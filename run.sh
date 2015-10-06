@@ -2,7 +2,7 @@
 
 data_dir=./mnist
 export PATH=$PATH:/usr/local/cuda/bin
-step=1
+step=3
 
 # (0) Get pdnn scripts
 if [ $step -le 0 ];then
@@ -51,34 +51,39 @@ fi
 if [ $step -le 2 ]; then
     echo "Start conversion to PFile."
 
-#    paste -d " " data/train-images.txt data/train-labels.txt | awk '{print "0 " NR-1 " " $0}'  > data/train.data
-#    paste -d " " data/test-images.txt data/test-labels.txt | awk '{print "0 " NR-1 " " $0}'  > data/test.data
-
     paste -d " " data/train/train-images.txt data/train/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train/train.data || exit 1
-    paste -d " " data/test/test-images.txt data/test/test-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/test/test.data || exit 1
+#    paste -d " " data/test/test-images.txt data/test/test-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/test/test.data || exit 1
 
-    tools/pfile_utils-v0_51/bin/pfile_create -i data/train/train.data -o data/train/train.pfile -f 784 -l 1 || exit 1
-    tools/pfile_utils-v0_51/bin/pfile_create -i data/test/test.data -o data/test/test.pfile -f 784 -l 1 || exit 1
+#    shuf data/train/train.data > data/tmp.data
+    paste -d " " data/train/train-images.txt data/train/train-labels.txt | shuf > data/tmp.data
+    mkdir -p data/train_cv10 data/train_tr90
+    head -n 1000 data/tmp.data | awk '{print NR-1 " 0 " $0}' > data/train_cv10/train_cv10.data
+    tail -n +1000 data/tmp.data | awk '{print NR-1 " 0 " $0}' > data/train_tr90/train_tr90.data
+    rm data/tmp.data
+
+#    tools/pfile_utils-v0_51/bin/pfile_create -i data/train/train.data -o data/train/train.pfile -f 784 -l 1 || exit 1
+    tools/pfile_utils-v0_51/bin/pfile_create -i data/train_tr90/train_tr90.data -o data/train_tr90/train_tr90.pfile -f 784 -l 1 || exit 1
+    tools/pfile_utils-v0_51/bin/pfile_create -i data/train_cv10/train_cv10.data -o data/train_cv10/train_cv10.pfile -f 784 -l 1 || exit 1
+#    tools/pfile_utils-v0_51/bin/pfile_create -i data/test/test.data -o data/test/test.pfile -f 784 -l 1 || exit 1
 
     echo "Finish conversion to PFile."
 fi
 
-exit
-
-# (3) train deep generative model
+# (3) train deep neural networks
 if [ $step -le 3 ]; then
+    echo "Start training."
+    mkdir -p dnn
 
-    mkdir -p exp
+    export PYTHONPATH=:$(pwd)/tools/pdnn/ ; export THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 ; 
+    python tools/pdnn/cmds/run_DNN.py --train-data data/train_tr90/train_tr90.pfile,partition=10m,random=true,stream=false \
+	--valid-data data/train_cv10/train_cv10.pfile,partition=10m,random=true,stream=false \
+	--nnet-spec 784:300:10 --activation maxout:3 --lrate D:0.0008:0.5:0.01,0.01:8 \
+	--wdir dnn/ --kaldi-output-file dnn/nnet
 
-    export PYTHONPATH=:$(pwd)/pdnn/ ; export THEANO_FLAGS=mode=FAST_RUN,device=gpu1,floatX=float32 ; 
-    python pdnn/cmds/run_DGM.py --train-data data/train.pfile,partition=10m,random=true,stream=false \
-	--valid-data data/test.pfile,partition=10m,random=true,stream=false \
-	--nnet-spec 784+10:300:64 --generative-nnet-spec 64+10:500:784 --activation maxout:3 --lrate D:0.008:0.5:0.001,0.001:8 \
-	--input-scaling 0.00001 --variance-ignore True --wdir exp --kaldi-output-file exp/dgm
-
-    cp exp/dgm.gen final.mdl
-
+    echo "Finish training."
 fi
+
+exit
 
 # (4) forward deep generative model and plot numbers
 if [ $step -le 4 ]; then

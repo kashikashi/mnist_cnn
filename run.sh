@@ -2,7 +2,7 @@
 
 data_dir=./mnist
 export PATH=$PATH:/usr/local/cuda/bin
-step=3
+step=4
 
 # (0) Get pdnn scripts
 if [ $step -le 0 ];then
@@ -11,6 +11,40 @@ if [ $step -le 0 ];then
     if [ ! -d tools ]; then
 	mkdir -p tools
 	cd tools
+
+	###### Set up KALDI.
+	if [ ! -d kaldi-maxout ]; then
+            # (1) Download
+	    echo "Checking out KALDI."
+	    svn co https://svn.code.sf.net/p/kaldi/code/trunk kaldi-maxout
+	    
+            # (2) Change revesion to 4985
+	    cd kaldi-maxout
+	    svn update -r 4960
+	    
+            # (3) Complie tools.
+	    cd tools
+	    make -j 4 || exit 1;
+	    cd ../
+	     
+            # (4) Compile src dirs.
+	    cd src/nnet
+	    mv nnet-component.h nnet-component.h.buckup
+	    mv nnet-component.cc nnet-component.cc.buckup
+	    mv nnet-activation.h nnet-activation.h.buckup
+	    wget http://www.cs.cmu.edu/~ymiao/codes/kaldipdnn/nnet-component.h
+	    wget http://www.cs.cmu.edu/~ymiao/codes/kaldipdnn/nnet-component.cc
+	    wget http://www.cs.cmu.edu/~ymiao/codes/kaldipdnn/nnet-activation.h
+	    cd ../
+	    
+	    ./configure
+	    make depend
+	    make
+	    cd ../
+	    
+	    cd ../
+	fi
+	
 	
 	svn co https://github.com/yajiemiao/pdnn/trunk pdnn || exit 1
 
@@ -51,20 +85,16 @@ fi
 if [ $step -le 2 ]; then
     echo "Start conversion to PFile."
 
-    paste -d " " data/train/train-images.txt data/train/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train/train.data || exit 1
-#    paste -d " " data/test/test-images.txt data/test/test-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/test/test.data || exit 1
+#    paste -d " " data/train/train-images.txt data/train/train-labels.txt | awk '{print NR-1 " 0 " $0}'  > data/train/train.data || exit 1
 
-#    shuf data/train/train.data > data/tmp.data
     paste -d " " data/train/train-images.txt data/train/train-labels.txt | shuf > data/tmp.data
     mkdir -p data/train_cv10 data/train_tr90
     head -n 1000 data/tmp.data | awk '{print NR-1 " 0 " $0}' > data/train_cv10/train_cv10.data
     tail -n +1000 data/tmp.data | awk '{print NR-1 " 0 " $0}' > data/train_tr90/train_tr90.data
     rm data/tmp.data
 
-#    tools/pfile_utils-v0_51/bin/pfile_create -i data/train/train.data -o data/train/train.pfile -f 784 -l 1 || exit 1
     tools/pfile_utils-v0_51/bin/pfile_create -i data/train_tr90/train_tr90.data -o data/train_tr90/train_tr90.pfile -f 784 -l 1 || exit 1
     tools/pfile_utils-v0_51/bin/pfile_create -i data/train_cv10/train_cv10.data -o data/train_cv10/train_cv10.pfile -f 784 -l 1 || exit 1
-#    tools/pfile_utils-v0_51/bin/pfile_create -i data/test/test.data -o data/test/test.pfile -f 784 -l 1 || exit 1
 
     echo "Finish conversion to PFile."
 fi
@@ -83,39 +113,25 @@ if [ $step -le 3 ]; then
     echo "Finish training."
 fi
 
-exit
-
-# (4) forward deep generative model and plot numbers
+# (4) forward network to calc. posterior
 if [ $step -le 4 ]; then
+    echo "Forward network to calc. posterior."
 
-    . path.sh
+    awk '{print NR " [ " $0 " ]"}' data/test/test-images.txt > data/test/test-images.feats || exit 1
 
-    nnet-forward final.mdl ark,t:scripts/eval.param ark,t:exp/eval.out
+    tools/kaldi-maxout/src/nnetbin/nnet-forward dnn/nnet ark,t:data/test/test-images.feats ark,t:data/test/test-images.posterior || exit 1
 
-    ii=-1
-    while read line ;
-    do
-	if [ ! $ii -eq -1 ] ;then
-	    echo $ii
-	    echo "----------------------------------------------------------------------------------"
-	    echo $line | awk '{ for (i = 1; i <= NF; i++) printf("%s%s", $i > 50 ? "+" : " ", i % 28 ? "" : "\n") }'
-	    echo "----------------------------------------------------------------------------------"
-	fi
-	ii=$((ii+1))
-    done < exp/eval.out
 fi
 
-# (5) convert to png file
+# (5) Calcurate scores (option).
 if [ $step -le 5 ]; then
+    echo "Calc. score"
 
-    mkdir -p images
+    awk '{print NR " [ " $0 " ]"}' data/test/test-labels.txt > data/test/test-labels.feats || exit 1
 
-    ii=-1
-    while read line ;
-    do
-        if [ ! $ii -eq -1 ] ;then
-	    echo $line | sed s%]%% | awk 'BEGIN { print "P2 28 28 255" } { for (i = 1; i <= NF; i++) printf("%d%s", $i < 0 ? 0 : $i > 255 ? 255 : int($i) , i % 14 ? " " : "\n") }' | pnmtopng - > images/image.$ii.png
-	fi
-	ii=$((ii+1))
-    done < exp/eval.out
+    tools/kaldi-maxout/src/nnetbin/nnet-forward dnn/nnet ark,t:data/test/test-images.feats ark:- \
+	| tools/kaldi-maxout/src/featbin/append-feats ark:- ark,t:data/test/test-labels.feats ark,t:- \
+	| python calc_score.py || exit 1
+
 fi
+

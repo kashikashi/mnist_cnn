@@ -1,10 +1,10 @@
 #!/bin/bash
 
-data_dir=./mnist
+data_dir=mnist
 export PATH=$PATH:/usr/local/cuda/bin
-step=4
+step=0
 
-# (0) Get pdnn scripts
+# (0) Setup scripts and dataset
 if [ $step -le 0 ];then
     echo "Start setup."
 
@@ -64,7 +64,20 @@ if [ $step -le 0 ];then
 	make install || exit 1
 	cd ../../
     fi
-    echo "Finish setup"  
+
+    if [ ! -d mnist ]; then
+
+	mkdir -p mnist
+	cd mnist
+	wget http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz ; gunzip train-images-idx3-ubyte.gz
+	wget http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz ; gunzip train-labels-idx1-ubyte.gz
+	wget http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz ; gunzip t10k-images-idx3-ubyte.gz
+	wget http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz	; gunzip t10k-labels-idx1-ubyte.gz	
+	cd ../
+
+    fi
+
+    echo "Finish setup"
 fi
 
 # (1) data prep

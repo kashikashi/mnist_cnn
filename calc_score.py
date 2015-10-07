@@ -29,4 +29,5 @@ for line in sys.stdin:
 sys.stdout.write("\n")
 
 precision=np.diag(R_mat).sum() / ( R_mat.sum())
-print precision
+
+sys.stdout.write("Corr. = " + str(precision))

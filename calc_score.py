@@ -30,4 +30,4 @@ sys.stdout.write("\n")
 
 precision=np.diag(R_mat).sum() / ( R_mat.sum())
 
-sys.stdout.write("Corr. = " + str(precision))
+sys.stdout.write("Corr. = " + str(precision) + " %\n")

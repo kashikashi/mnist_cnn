@@ -142,7 +142,7 @@ if [ $step -le 5 ]; then
 
     tools/kaldi-maxout/src/nnetbin/nnet-forward dnn/nnet ark,t:data/test/test-images.feats ark:- \
 	| tools/kaldi-maxout/src/featbin/append-feats ark:- ark,t:data/test/test-labels.feats ark,t:- \
-	| python calc_score.py 10 || exit 1
+	| python scripts/calc_score.py 10 || exit 1
 
 fi
 
@@ -174,6 +174,6 @@ if [ $step -le 7 ]; then
 
     tools/kaldi-maxout/src/nnetbin/nnet-forward cnn/cnn.nnet ark:data/test/test-images.conv.forward ark:- \
         | tools/kaldi-maxout/src/featbin/append-feats ark:- ark,t:data/test/test-labels.feats ark,t:- \
-        | python calc_score.py 10 || exit 1
+        | python scripts/calc_score.py 10 || exit 1
     
 fi

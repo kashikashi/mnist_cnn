@@ -19,7 +19,7 @@ if [ $step -le 0 ];then
 	    svn co https://svn.code.sf.net/p/kaldi/code/trunk kaldi-maxout
 	    
             # (2) Complie tools.
-	    cd tools
+	    cd kaldi-maxout/tools
 	    make -j 4 || exit 1;
 	    cd ../
 	     

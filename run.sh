@@ -18,25 +18,13 @@ if [ $step -le 0 ];then
 	    echo "Checking out KALDI."
 	    svn co https://svn.code.sf.net/p/kaldi/code/trunk kaldi-maxout
 	    
-            # (2) Change revesion to 4985
-	    cd kaldi-maxout
-	    svn update -r 4960
-	    
-            # (3) Complie tools.
+            # (2) Complie tools.
 	    cd tools
 	    make -j 4 || exit 1;
 	    cd ../
 	     
-            # (4) Compile src dirs.
-	    cd src/nnet
-	    mv nnet-component.h nnet-component.h.buckup
-	    mv nnet-component.cc nnet-component.cc.buckup
-	    mv nnet-activation.h nnet-activation.h.buckup
-	    wget http://www.cs.cmu.edu/~ymiao/codes/kaldipdnn/nnet-component.h
-	    wget http://www.cs.cmu.edu/~ymiao/codes/kaldipdnn/nnet-component.cc
-	    wget http://www.cs.cmu.edu/~ymiao/codes/kaldipdnn/nnet-activation.h
-	    cd ../
-	    
+            # (3) Compile src dirs.
+	    cd src
 	    ./configure
 	    make depend
 	    make
@@ -118,7 +106,7 @@ if [ $step -le 3 ]; then
     export PYTHONPATH=:$(pwd)/tools/pdnn/ ; export THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 ;
     python tools/pdnn/cmds/run_DNN.py --train-data data/train_tr90/train_tr90.pfile,partition=10m,random=true,stream=true \
 	--valid-data data/train_cv10/train_cv10.pfile,partition=10m,random=true,stream=true \
-	--nnet-spec 784:500:500:10 --activation maxout:2 --lrate D:0.0008:0.5:0.01,0.01:8 \
+	--nnet-spec 784:500:500:10  --lrate D:0.0008:0.5:0.01,0.01:8 \
 	--wdir dnn/ --kaldi-output-file dnn/nnet
     
     echo "Finish training."
